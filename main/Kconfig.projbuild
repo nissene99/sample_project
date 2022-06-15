@@ -1,0 +1,8 @@
+menu "Aufgabe 1 Config"
+    config SECONDS
+        int "Seconds"
+        range 0 60
+        default 10
+        help
+            "LOG every SECONDS seconds."
+endmenu
