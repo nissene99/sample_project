@@ -16,10 +16,12 @@ Erstellt:       15.06.2022
 
 #endif //MAIN_CONFIG_H
 
-#define WIFI_SSID ""
-#define WIFI_PASSWORD ""
+#define WIFI_SSID "FH-Kiel-IoT-NAT"
+#define WIFI_PASSWORD "!FH-NAT-001!"
 #define AUTH_USERNAME ""
 #define AUTH_PASSWORD ""
+
+static QueueHandle_t globalQueue;
 
 #define HTTPD_401      "401 UNAUTHORIZED"
 
@@ -69,19 +71,6 @@ static const httpd_uri_t hello = {
 		/* Let's pass response string in user
 		 * context to demonstrate it's usage */
 		.user_ctx  = "Hello World!"
-};
-
-static const httpd_uri_t echo = {
-		.uri       = "/echo",
-		.method    = HTTP_POST,
-		.handler   = echo_post_handler,
-};
-
-static const httpd_uri_t ctrl = {
-		.uri       = "/ctrl",
-		.method    = HTTP_PUT,
-		.handler   = ctrl_put_handler,
-		.user_ctx  = NULL
 };
 
 static const httpd_uri_t dimmer = {

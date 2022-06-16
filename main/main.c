@@ -95,120 +95,79 @@ static bool cb_ledc_fade_end_event(const ledc_cb_param_t *param,
 	return (taskAwoken == pdTRUE);
 }
 
-static const char *TAG_PAD = "Touch pad";
-static bool s_pad_activated[TOUCH_PAD_MAX];
-static uint32_t s_pad_init_val[TOUCH_PAD_MAX];
-static void tp_example_set_thresholds(void)
-{
-	uint16_t touch_value;
-	for (int i = 0; i < TOUCH_PAD_MAX; i++) {
-		//read filtered value
-		touch_pad_read_filtered(i, &touch_value);
-		s_pad_init_val[i] = touch_value;
-		ESP_LOGI(TAG, "test init: touch pad [%d] val is %d", i, touch_value);
-		//set interrupt threshold.
-		ESP_ERROR_CHECK(touch_pad_set_thresh(i, touch_value * 2 / 3));
 
-	}
-}
+/*
+  Read values sensed at all available touch pads.
+ Print out values in a loop on a serial monitor.
+ */
 static void tp_example_read_task(void *pvParameter)
 {
-	static int show_message;
-	int change_mode = 0;
-	int filter_mode = 0;
+	uint16_t touch_value;
+	uint16_t touch_filter_value;
+#if TOUCH_FILTER_MODE_EN
+	printf("Touch Sensor filter mode read, the output format is: \nTouchpad num:[raw data, filtered data]\n\n");
+#else
+	printf("Touch Sensor normal mode read, the output format is: \nTouchpad num:[raw data]\n\n");
+#endif
 	while (1) {
-		if (filter_mode == 0) {
-			//interrupt mode, enable touch interrupt
-			touch_pad_intr_enable();
-			for (int i = 0; i < TOUCH_PAD_MAX; i++) {
-				if (s_pad_activated[i] == true) {
-					ESP_LOGI(TAG, "T%d activated!", i);
-					// Wait a while for the pad being released
-					vTaskDelay(200 / portTICK_PERIOD_MS);
-					// Clear information on pad activation
-					s_pad_activated[i] = false;
-					// Reset the counter triggering a message
-					// that application is running
-					show_message = 1;
+		for (int i = 0; i < TOUCH_PAD_MAX; i++) {
+#if TOUCH_FILTER_MODE_EN
+			// If open the filter mode, please use this API to get the touch pad count.
+			touch_pad_read_raw_data(i, &touch_value);
+			touch_pad_read_filtered(i, &touch_filter_value);
+			// printf("T%d:[%4d,%4d] ", i, touch_value,
+			//		touch_filter_value);
+			/* if (i == 0) {
+				if(touch_filter_value < 1000){
+					printf("%d", touch_filter_value);
+					// printf("\nein voller Erfolg?\n");
+					// printf("\n\n\n"
+					//   "**********************"
+					//   "\nERFOLG\n"
+					//   "**********************"
+					//   "\n\n\n");
 				}
+			} else{
+				printf("kein Erfolg - Wet: %d\n", touch_value);
 			}
-		} else {
-			//filter mode, disable touch interrupt
-			touch_pad_intr_disable();
-			touch_pad_clear_status();
-			for (int i = 0; i < TOUCH_PAD_MAX; i++) {
-				uint16_t value = 0;
-				touch_pad_read_filtered(i, &value);
-				if (value < s_pad_init_val[i] * TOUCH_THRESH_PERCENT / 100) {
-					ESP_LOGI(TAG, "T%d activated!", i);
-					ESP_LOGI(TAG, "value: %d; init val: %d", value, s_pad_init_val[i]);
-					vTaskDelay(200 / portTICK_PERIOD_MS);
-					// Reset the counter to stop changing mode.
-					change_mode = 1;
-					show_message = 1;
-				}
-			}
+			 */
+#else
+			touch_pad_read(i, &touch_value);
+            printf("T%d:[%4d] ", i, touch_value);
+#endif
 		}
-
-		vTaskDelay(10 / portTICK_PERIOD_MS);
-
-		// If no pad is touched, every couple of seconds, show a message
-		// that application is running
-		if (show_message++ % 500 == 0) {
-			ESP_LOGI(TAG, "Waiting for any pad being touched...");
-		}
-		// Change mode if no pad is touched for a long time.
-		// We can compare the two different mode.
-		if (change_mode++ % 2000 == 0) {
-			filter_mode = !filter_mode;
-			ESP_LOGW(TAG, "Change mode...%s", filter_mode == 0 ? "interrupt mode" : "filter mode");
-		}
-	}
-}
-static void tp_example_rtc_intr(void *arg)
-{
-	uint32_t pad_intr = touch_pad_get_status();
-	//clear interrupt
-	touch_pad_clear_status();
-	for (int i = 0; i < TOUCH_PAD_MAX; i++) {
-		if ((pad_intr >> i) & 0x01) {
-			s_pad_activated[i] = true;
-		}
+		printf("\n");
+		vTaskDelay(200 / portTICK_PERIOD_MS);
 	}
 }
 static void tp_example_touch_pad_init(void)
 {
-	for (int i = 0; i < TOUCH_PAD_MAX; i++) {
-		//init RTC IO and mode for touch pad.
+	for (int i = 0;i< TOUCH_PAD_MAX;i++) {
 		touch_pad_config(i, TOUCH_THRESH_NO_USE);
 	}
 }
 void B_3_task(void *pvParameter){
-	// Initialize touch pad peripheral, it will start a timer to run a filter
-	ESP_LOGI(TAG, "Initializing touch pad");
+	// Initialize touch pad peripheral.
+	// The default fsm mode is software trigger mode.
 	ESP_ERROR_CHECK(touch_pad_init());
-	// If use interrupt trigger mode, should set touch sensor FSM mode at 'TOUCH_FSM_MODE_TIMER'.
-	touch_pad_set_fsm_mode(TOUCH_FSM_MODE_TIMER);
 	// Set reference voltage for charging/discharging
-	// For most usage scenarios, we recommend using the following combination:
-	// the high reference valtage will be 2.7V - 1V = 1.7V, The low reference voltage will be 0.5V.
+	// In this case, the high reference valtage will be 2.7V - 1V = 1.7V
+	// The low reference voltage will be 0.5
+	// The larger the range, the larger the pulse count value.
 	touch_pad_set_voltage(TOUCH_HVOLT_2V7, TOUCH_LVOLT_0V5, TOUCH_HVOLT_ATTEN_1V);
-	// Init touch pad IO
 	tp_example_touch_pad_init();
-	// Initialize and start a software filter to detect slight change of capacitance.
+#if TOUCH_FILTER_MODE_EN
 	touch_pad_filter_start(TOUCHPAD_FILTER_TOUCH_PERIOD);
-	// Set thresh hold
-	tp_example_set_thresholds();
-	// Register touch interrupt ISR
-	touch_pad_isr_register(tp_example_rtc_intr, NULL);
-	// Start a task to show what pads have been touched
-	xTaskCreate(&tp_example_read_task, "touch_pad_read_task", 2048, NULL, 5, NULL);
+#endif
+	tp_example_read_task(NULL);
+	for(;;){
+		vTaskDelay(portMAX_DELAY);
+	}
 }
 
 void B_2_task(void *pvParameter)
 {
 	int ch;
-
 	ledc_timer_config(&ledc_timer);
 
 	for(ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
@@ -228,16 +187,26 @@ void B_2_task(void *pvParameter)
 						 &callbacks,
 						 (void *) counting_sem);
 	}
-
 	for(;;){
+		//char buf = 0;
+		//xQueueReceive(globalQueue, &buf, 50 / portTICK_PERIOD_MS);
 		printf("1. LEDC fade up to duty = %d\n", LEDC_TEST_DUTY);
 		for (ch = 0; ch < LEDC_TEST_CH_NUM; ch++) {
-			ledc_set_fade_with_time(ledc_channel[ch]
-												.speed_mode,
-			                        ledc_channel[ch].channel,
-									LEDC_TEST_DUTY,
-									LEDC_TEST_FADE_TIME
-									);
+			//if(buf == 0)
+				ledc_set_fade_with_time(ledc_channel[ch]
+													.speed_mode,
+				                        ledc_channel[ch].channel,
+										LEDC_TEST_DUTY,
+										LEDC_TEST_FADE_TIME
+										);
+			/*else
+				ledc_set_fade_with_time(ledc_channel[ch]
+						                        .speed_mode,
+				                        ledc_channel[ch].channel,
+				                        (int)(LEDC_TEST_CH_NUM/100 *
+										buf),
+				                        LEDC_TEST_FADE_TIME
+				);*/
 			ledc_fade_start(ledc_channel[ch].speed_mode,
 			                ledc_channel[ch].channel,
 							LEDC_FADE_NO_WAIT);
@@ -262,19 +231,27 @@ void B_2_task(void *pvParameter)
 	}
 }
 void AufgabeB(){
-	TaskHandle_t b2_task_handle, b3_task_handle;
-
+	TaskHandle_t b2_task_handle;
+	TaskHandle_t b3_task_handle;
+	globalQueue = xQueueCreate(2, sizeof(char ));
 	xTaskCreatePinnedToCore(B_2_task, "b2_task",
 							2048, NULL,
 							5,&b2_task_handle,
 							1);
+
+	/*xTaskCreatePinnedToCore(B_3_task, "b3_task",
+	                        2048, NULL,
+	                        5,&b3_task_handle,
+	                        1);*/
 }
 
 
 void AufgabeC(){
-
+	TaskHandle_t server_handle;
+	xTaskCreatePinnedToCore(http_server_task, "http server", 2048,
+							NULL, 5, &server_handle, 1);
 }
 
 void app_main(void){
-	AufgabeB();
+	AufgabeA();
 }

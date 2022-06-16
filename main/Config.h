@@ -49,7 +49,8 @@ ledc_channel_config_t ledc_channel[LEDC_TEST_CH_NUM] = {
 		}
 };
 
+#define TOUCH_PAD_NO_CHANGE   (-1)
 #define TOUCH_THRESH_NO_USE   (0)
-#define TOUCH_THRESH_PERCENT  (80)
-#define TOUCHPAD_FILTER_TOUCH_PERIOD (4)
+#define TOUCH_FILTER_MODE_EN  (1)
+#define TOUCHPAD_FILTER_TOUCH_PERIOD (10)
 

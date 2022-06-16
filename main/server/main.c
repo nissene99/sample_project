@@ -8,7 +8,7 @@ Erstellt:       15.06.2022
 
 #include "config.h"
 #include "mDNS/mDNS.c"
-#include "mDNS/config.h"
+#include "sntp/sntp.c"
 #include <esp_event.h>
 #include <esp_log.h>
 #include <nvs_flash.h>
@@ -249,30 +249,19 @@ esp_err_t http_404_error_handler(httpd_req_t *req, httpd_err_code_t err)
  */
 static esp_err_t ctrl_put_handler(httpd_req_t *req)
 {
-	char buf;
+	char buf = 0;
 	int ret;
 
-	if ((ret = httpd_req_recv(req, &buf, 1)) <= 0) {
+	if ((ret = httpd_req_recv(req, &buf, 3)) <= 0) {
 		if (ret == HTTPD_SOCK_ERR_TIMEOUT) {
 			httpd_resp_send_408(req);
 		}
 		return ESP_FAIL;
 	}
 
-	if (buf == '0') {
-		/* URI handlers can be unregistered using the uri string */
-		ESP_LOGI("http", "Unregistering /hello and /echo URIs");
-		httpd_unregister_uri(req->handle, "/hello");
-		httpd_unregister_uri(req->handle, "/echo");
-		/* Register the custom error handler */
-		httpd_register_err_handler(req->handle, HTTPD_404_NOT_FOUND, http_404_error_handler);
-	}
-	else {
-		ESP_LOGI("http", "Registering /hello and /echo URIs");
-		httpd_register_uri_handler(req->handle, &hello);
-		httpd_register_uri_handler(req->handle, &echo);
-		/* Unregister custom error handler */
-		httpd_register_err_handler(req->handle, HTTPD_404_NOT_FOUND, NULL);
+	if ( buf != 0  && buf <= 100) {
+		xQueueSend(globalQueue, &buf, portMAX_DELAY);
+		ESP_LOGI("dimmer", "Change LED dim to %d%%.", buf);
 	}
 
 	/* Respond with empty body */
@@ -292,8 +281,7 @@ static httpd_handle_t start_webserver(void)
 		// Set URI handlers
 		ESP_LOGI("http", "Registering URI handlers");
 		httpd_register_uri_handler(server, &hello);
-		httpd_register_uri_handler(server, &echo);
-		httpd_register_uri_handler(server, &ctrl);
+		httpd_register_uri_handler(server, &dimmer);
 #if CONFIG_EXAMPLE_BASIC_AUTH
 		httpd_register_basic_auth(server);
 #endif
@@ -337,9 +325,15 @@ static void connect_handler(void* arg, esp_event_base_t event_base,
 
 void http_server_task(void* arg)
 {
+	TaskHandle_t mDNS_handle;
 	httpd_handle_t server = NULL;
+
 	ESP_ERROR_CHECK(nvs_flash_init());
 	ESP_ERROR_CHECK(esp_netif_init());
 	ESP_ERROR_CHECK(esp_event_loop_create_default());
 	server = start_webserver();
+	xTaskCreate(mdns_task, "mDNS", 2048, NULL, 3, &mDNS_handle);
+	for(;;){
+		vTaskDelay(50 / portTICK_PERIOD_MS);
+	}
 }

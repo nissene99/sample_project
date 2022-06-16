@@ -211,7 +211,7 @@ static void check_button(void)
 	old_level = new_level;
 }
 
-static void mdns_example_task(void *pvParameters)
+static void mdns_task(void *pvParameters)
 {
 	while (1) {
 		check_button();
